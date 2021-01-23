@@ -1,0 +1,8 @@
+.Rproj.user
+.Rhistory
+.RData
+.Ruserdata
+dl_data
+EarthdataLoginSetup.R
+dl.dictionary.rds
+out.tmp
