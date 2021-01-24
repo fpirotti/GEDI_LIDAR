@@ -1,131 +1,182 @@
-library("BiocManager")
-BiocManager::install(c("rhdf5"))
+# library("BiocManager")
+# BiocManager::install(c("rhdf5"))
 library(httr)
-library(rhdf5)
+library(hdf5r)
 library(raster)
 library(jsonlite)
 library(XML)
 library(rlas)
+library(httr)
 
-token.RetSTring<-NULL
-getToken<-function(){
-  token<-"curl --silent -X POST --header \"Content-Type: application/xml\" -d \"<token><username>tesaf</username><password>Libero17</password><client_id>NSIDC_client_id</client_id><user_ip_address>95.140.134.234</user_ip_address> </token>\" https://cmr.earthdata.nasa.gov/legacy-services/rest/tokens"
-  res<-system(token,  intern = T)
-  resj<- xmlToList(res)
-  token.RetSTring<<-resj 
+if(!exists("italy.nord.bounds")) load("italy.nord.bounds.rda")
+data.to.write<-c(
+  "land_segments/canopy/h_canopy",
+  "land_segments/canopy/canopy_rh_conf",
+  "land_segments/canopy/h_median_canopy_abs",
+  "land_segments/canopy/h_min_canopy",
+  "land_segments/canopy/h_mean_canopy_abs",
+  "land_segments/canopy/h_median_canopy",
+  "land_segments/canopy/h_canopy_abs",
+  "land_segments/canopy/toc_roughness",
+  "land_segments/canopy/h_min_canopy_abs",
+  "land_segments/canopy/h_dif_canopy",
+  "land_segments/canopy/h_canopy_quad",
+  "land_segments/canopy/n_ca_photons",
+  "land_segments/canopy/centroid_height",
+ # "land_segments/canopy/canopy_h_metrics_abs",
+  "land_segments/canopy/landsat_perc",
+  "land_segments/canopy/h_mean_canopy",
+ # "land_segments/canopy/subset_can_flag",
+  "land_segments/canopy/canopy_h_metrics",
+  "land_segments/canopy/n_toc_photons",
+  "land_segments/canopy/canopy_flag",
+  "land_segments/canopy/landsat_flag",
+  "land_segments/canopy/h_max_canopy_abs",
+  "land_segments/canopy/h_canopy_uncertainty",
+  "land_segments/canopy/canopy_openness",
+  "land_segments/canopy/h_max_canopy",
+  "land_segments/terrain/h_te_uncertainty",
+  "land_segments/terrain/h_te_mean",
+  "land_segments/terrain/h_te_min",
+  "land_segments/terrain/h_te_interp",
+  "land_segments/terrain/h_te_max",
+  "land_segments/terrain/h_te_skew",
+  "land_segments/terrain/h_te_median",
+  "land_segments/terrain/h_te_best_fit",
+  "land_segments/terrain/h_te_std",
+  "land_segments/terrain/terrain_slope",
+  "land_segments/terrain/n_te_photons",
+  "land_segments/terrain/h_te_mode" 
+)
+
+download.data.path = "dl_data/ICESAT"
+dirs <- list(
+  download.data.path = download.data.path,
+  download.data.path.proc = file.path(download.data.path, "processed"),
+  download.data.path.geodata = file.path("/archivio/shared/geodati/vettoriali/ICESAT/ATL08")
+)
+
+
+token.RetSTring <- NULL
+getToken <- function() {
+  token <-
+    "curl --silent -X POST --header \"Content-Type: application/xml\" -d \"<token><username>tesaf</username><password>Libero17</password><client_id>NSIDC_client_id</client_id><user_ip_address>95.140.134.234</user_ip_address> </token>\" https://cmr.earthdata.nasa.gov/legacy-services/rest/tokens"
+  res <- system(token,  intern = T)
+  resj <- xmlToList(res)
+  token.RetSTring <<- resj
   resj$id
-  }
-
-# res<-system("curl --tlsv1.2 --silent https://www.howsmyssl.com/a/check",  intern = T  )
-# resj<- jsonlite::parse_json(res)
-# granule.link<-"https://n5eil01u.ecs.nsidc.org/DP7/ATLAS/ATL03.001/2018.11.10/ATL03_20181110013714_06480106_001_01.h5?_ga=2.253602688.842378166.1561128208-1381519981.1542137752"
-# granule.link.parsed<-parse_url(granule.link)
-# granule.name<-basename(granule.link.parsed$path)
-# bb<-"-71.524100,-38.672400,-71.494414,-38.664972"
-
- 
-mydata.curl<-function(bb, sname="ATL03"){
-parameters<-list(
-  #email="no",
-     #format="NetCDF4-CF",
-     short_name=sname,
-     version="001",
-     time="2015-09-03T00:00:00,2019-11-28T23:59:59",
-     bounding_box=bb,
-     bbox=bb,
-   #  email="no",
-     token=getToken()
-     )
- sprintf("curl -O -J --dump-header response-header.txt  \"https://n5eil02u.ecs.nsidc.org/egi/request?%s\"",
-                paste0( sprintf("%s=%s", names(parameters), parameters), collapse = "&")) 
 }
 
-oo<-tryCatch({
-   # system(mydata.curl("-71.5338,-38.6884,-71.4024,-38.6178"),      intern = T)
-   # system(mydata.curl("-71.5338,-38.6884,-71.4024,-38.6178", "ATL08"),      intern = T)
-        },
-         error=function(err){
-           print(err) 
-         }, 
-         warning=function(warn){
-           print(warn)
- })
 
-#zip.names<- list.files(pattern = ".zip")
-#sapply( zip.names, unzip  )
-granule.names<- list.files(pattern = "processed_ATL08[A-Za-z0-9_-]*.h5", recursive = T)
+create.url <- function(bb, sname = "ATL08", outfile) {
+  parameters <- list(
+    short_name = sname,
+    version = "001",
+    "temporal[]" = "2015-09-03T00:00:00,2029-11-28T23:59:59",
+    bounding_box = bb, 
+    version = "3",
+    version = "03",
+    version = "003",
+    provider = "NSIDC_ECS",
+    page_size = "2000",
+    #  email="no",
+    token = getToken()
+  )
+  
+  sprintf(
+    "curl -o \"%s\" -O -J --dump-header response-header.txt  \"https://cmr.earthdata.nasa.gov/search/granules.json?%s\"",
+    outfile,
+    paste0(sprintf("%s=%s", names(parameters), parameters), collapse = "&")
+  )
+}
+
+find.granules<-function(type = "ATL08", bounds){
+  oo <- tryCatch({ 
+    outfile <- tempfile()
+    cmd <-
+      create.url(paste0(collapse = ",", bounds), type, outfile)
+    system(cmd, intern = T)
+    read_json(outfile)
+  },
+  error = function(err) {
+    err
+  },
+  warning = function(warn) {
+    warn
+  })
+}  
+
+
+for (i in dirs) {
+  if (!dir.exists(i)) {
+    dir.create(i, recursive = T, mode = "0777")
+    Sys.chmod(i, mode = "0777", use_umask = TRUE)
+  }
+}
+
+
+granule.paths <- list.files(download.data.path, pattern = "*.h5", full.names = T)
+granule.names <-basename(granule.paths)
+
+grep(beams[[1]], pp$name, value = T)
+
+# oo<-find.granules(type = "ATL08", italy.nord.bounds)
+# 
+# for (i in oo$feed$entry) {
+#   url.address <- i$links[[1]]$href
+#   if (is.element(basename(url.address), granule.names)) {
+#     message(basename(url.address), " exists")
+#     next
+#   }
+#   print(basename(url.address))
+#   r <- GET(url.address, authenticate("tesaf", "Libero17"))
+#   bin <- content(r, "raw")
+#   writeBin(bin, file.path(download.data.path, basename(url.address)))
+# }
 
 earth <- c("land", "ocean", "sea ice", "land ice", "inland water")
-out.crs<-crs("+proj=utm +zone=32 +datum=WGS84 +units=m +no_defs +ellps=WGS84 +towgs84=0,0,0")
-hit<-F
-lines<-list()
-whereRthePH<-lapply(granule.names, function(granule){
-  cc<-h5ls(granule)
-  ph_c<-grep("heights", cc$name) 
-  # ph_c<-grep("segment_ph_cnt", cc$name) 
-  if(length(ph_c)>0 && !hit){
-    
-    for(i in cc[ph_c , "group"] ){
-      print(i)
-      nn<-basename(granule)
-      extension(nn)<-""
-      mydata <- h5read(granule, i) 
- 
-      ## elimino rumore
-      lands<-which( t(mydata$heights$signal_conf_ph[1,])>1)
- 
-      df.t<- data.frame( X=mydata$heights$lon_ph[lands], 
-                         Y=mydata$heights$lat_ph[lands], 
-                         Z= mydata$heights$h_ph[lands] )
+out.crs <- sf::st_crs(7912)
+beams<-c("gt1r","gt2r","gt1l","gt3l","gt2l","gt3r")
+hit <- F
+lines <- list()
+#granule<-granule.paths[[1]]
+whereRthePH <- lapply(granule.paths, function(granule) {
   
-      if(nrow(df.t)>0) {
-        
-        mp<-SpatialPoints( df.t, proj4string=CRS("+init=epsg:4326"))
-        
-        mp32 <- spTransform(mp, out.crs)
-        
-        df.t<- data.frame(mp32@coords)
-        names(df.t)<- toupper(names(df.t))
-        df.t$gpstime<- as.double(mydata$heights$delta_time[lands] )
-        df.t$Classification<- as.integer( mydata$heights$signal_conf_ph[1,lands] )
-        df.t.head <- header_create( df.t )
-        
-        dd<-sprintf("%s_%s", nn,  substring(i, 2, 10000)  )
-        ddd<-sprintf("%s_%s.laz", nn,  substring(i, 2, 10000)  )
-        print(sprintf("writing %s", ddd))
-        lines[[dd]] <<- Lines(Line(df.t[ c(1,nrow(df.t)), 1:2]),ID=dd)
-         
-        rlas::write.las( ddd, df.t.head, df.t )
-        
-      } else {
-        print("NOT")
-        print(i)
-      }
-    } 
-  } else {
-    print("NOTNon contiene punti")
-    print(granule)
+  op<-hdf5r::H5File$new(granule)
+  
+  pp <- op$ls(recursive=TRUE)
+  if(nrow(pp)==0){
+    warning("HDF file seems empty... is the file corrupt?")
+    return(NULL)
   }
-}) 
+  beams.data<-list()
+  for(i in beams){
+    beams.data[[i]]<-list()
+    for(i1 in data.to.write){ 
+      beams.data[[i]][[basename(i1)]] <- op$open(sprintf("%s/%s", i, i1) )$read() 
+      beams.data[[i]][[basename(i1)]][ beams.data[[i]][[basename(i1)]] > 3.3e+38 ] <-NA
+    }
+    nn<-beams.data[[i]][["canopy_h_metrics"]]
+    nn<-as.list(as.data.frame(t(nn)))
+    names(nn)<- sprintf("canopyH_%sp", c(25,50,60,70,75,80,85,90,95 ))
+    beams.data[[i]][["canopy_h_metrics"]]<-NULL 
+    beams.data[[i]] <- c(beams.data[[i]], nn)
+  }
+  
+  f.table<-data.table::rbindlist(beams.data, idcol = "beam")
+   
+    
+})
 
-fff<-strsplit( names(lines), "_")
+fff <- strsplit(names(lines), "_")
 
 aaa <- do.call(rbind, fff)
 
-dff<-data.frame(id=names(lines),aaa)
+dff <- data.frame(id = names(lines), aaa)
 
-rownames(dff)<-names(lines)
+rownames(dff) <- names(lines)
 
-flights_lines <- SpatialLinesDataFrame(SpatialLines(lines), dff )
-crs(flights_lines)<-out.crs
+flights_lines <- SpatialLinesDataFrame(SpatialLines(lines), dff)
+crs(flights_lines) <- out.crs
 
-raster::shapefile(flights_lines, "flighLines", overwrite=T)
-
-
-
-
- 
-
-
-
-
+raster::shapefile(flights_lines, "flighLines", overwrite = T)

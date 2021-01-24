@@ -9,17 +9,16 @@ for(i in dl.files){
     next
   }
   
-  clipped<-rGEDI.clip(i, italy.bounds)
-  mf<-rGEDI.read(i)
+  clipped<-rGEDI.clip(i, F, italy.bounds)
+  mdata<-rGEDI.read(clipped)
+ 
+  # Converting shot_number as "integer64" to "character"
+  level1bGeo$shot_number<-paste0(level1bGeo$shot_number)
+  head(level2BVPM
+  # Converting level1bGeo as data.table to SpatialPointsDataFrame
+  library(sp)
+  level1bGeo_spdf<-SpatialPointsDataFrame(cbind(level1bGeo$longitude_bin0, level1bGeo$latitude_bin0),
+                                          data=level1bGeo)
   
-  bn<-basename(i)
-  
-  raster::extension(bn)<-""
-  
-  ss<-strsplit(bn,"_")[[1]]
-  product.type<- paste0("L", as.integer( sub("GEDI","", ss[1]) ), ss[2]  )
-  timestamp<- strptime( substr(ss[3], 1, 7), "%Y%j", tz="UTC")
-  
-  if( is.null(dl.dictionary[[bn]]) ) next
   
 }

@@ -1,8 +1,27 @@
 library(rGEDI)
 library(raster)
-library(functools)
- 
 
+isTruthy<-function (x) 
+{
+  if (inherits(x, "try-error")) 
+    return(FALSE)
+  if (!is.atomic(x)) 
+    return(TRUE)
+  if (is.null(x)) 
+    return(FALSE)
+  if (length(x) == 0) 
+    return(FALSE)
+  if (all(is.na(x))) 
+    return(FALSE)
+  if (is.character(x) && !any(nzchar(stats::na.omit(x)))) 
+    return(FALSE)
+  if (inherits(x, "shinyActionButtonValue") && x == 0) 
+    return(FALSE)
+  if (is.logical(x) && !any(stats::na.omit(x))) 
+    return(FALSE)
+  return(TRUE)
+}
+ 
 rGEDI.read<-function( path ){
   
   bn<-basename(path)
@@ -26,7 +45,17 @@ rGEDI.read<-function( path ){
 }
 
 
-rGEDI.clip<-function( what2clip, ... ){
+#' Title
+#'
+#' @param what2clip either opened h5 file or path to file
+#' @param overwrite if file exists, should overwrite?
+#' @param ... either should provide xmin, xmax, ymin, ymax in this order or spatial bounding box in SF geometry
+#'
+#' @return a path to the clipped object, which will have the same name of the original with appended to file name xmin_xmax_ymin_ymax 
+#' @export
+#'
+#' @examples #none
+rGEDI.clip<-function( what2clip, overwrite=F, ... ){
   clipper<-list(...)
   
   if(is.null(clipper)) {
@@ -52,12 +81,11 @@ rGEDI.clip<-function( what2clip, ... ){
   } else {
     warning("Problem with bound box, should be an SFC element or xmin, xmax, ymin, ymax")
     return(NULL)
-  }
-  
-  if( !(functools::Truthy(xmin) & 
-        functools::Truthy(xmax) &
-        functools::Truthy(ymin) &
-        functools::Truthy(ymax) ) ){
+  } 
+  if( !(isTruthy(xmin) & 
+        isTruthy(xmax) &
+        isTruthy(ymin) &
+        isTruthy(ymax) ) ){
     warning("Missing one corner, should provide xmin, xmax, ymin, ymax in this order or spatial bounding box in SF geometry")
     return(NULL)
     
@@ -79,24 +107,85 @@ rGEDI.clip<-function( what2clip, ... ){
   ss<-strsplit(bn,"_")[[1]]
   product.type<- paste0("L", as.integer( sub("GEDI","", ss[1]) ), ss[2]  )
 
-  bn.out<-sprintf("%s//%s_clip_%s_%s_%s_%s.h5", outdir, bn,
-                  gsub(".","_", as.character(xmin)), 
-                  gsub(".","_", as.character(xmax)), 
-                  gsub(".","_", as.character(ymin)), 
-                  gsub(".","_", as.character(ymax)) )
+  bn.out<-sprintf("%s/%s_clip_%s_%s_%s_%s.h5", outdir, bn,
+                  gsub("\\.","_", sprintf("%.4f",xmin)), 
+                  gsub("\\.","_", sprintf("%.4f",xmax)), 
+                  gsub("\\.","_", sprintf("%.4f",ymin)), 
+                  gsub("\\.","_", sprintf("%.4f",ymax)) )
       
+  if(file.exists(bn.out)&& !overwrite){
+    warning("File exists, returning, if you want to overwrite add \"overwrite=TRUE\" ")
+    return(bn.out)
+  }
   if(product.type=="L1B"){
     gedi.clipped <- clipLevel1B(what2clip, xmin, xmax, ymin, ymax,
-                                output=)
+                                output=bn.out)
   }
   if(product.type=="L2A"){
     gedi.clipped <- clipLevel2A(what2clip, xmin, xmax, ymin, ymax, 
-                                output=paste0(outdir,"//level2a_clip_bb.h5"))
+                                output=bn.out)
   }
   if(product.type=="L2B"){
     gedi.clipped <- clipLevel2B(what2clip, xmin, xmax, ymin, ymax,
-                                output=paste0(outdir,"//level2b_clip_bb.h5"))
+                                output=bn.out)
   }
   
+  rGEDI::close(what2clip)
+  
+  return(bn.out)
    
+}
+
+
+#' Title
+#'
+#' @param infile either rGEDI hd5 opened file or path to h5 file
+#' @param saveFormat either "shapefile"/"SHP" or "geopackage"/"GPKG" 
+#' @param overwrite TRUE or FALSE overwrite if file exists?
+#'
+#' @return returns SF object with geometries, if "saveformat" is not null, 
+#' output file is created in the same folder and returns path to written file
+#' @export
+#'
+#' @examples #none
+rGEDI.toGeom<-function(infile, saveFormat=NULL, overwrite=F){
+  
+  if(file.exists(infile)){
+    infile<-rGEDI.read(infile)
+  }
+  
+  bn<-basename(infile@h5$filename)
+  outdir<-dirname(infile@h5$filename) 
+  raster::extension(bn)<-""
+  ss<-strsplit(bn,"_")[[1]]
+  product.type<- paste0("L", as.integer( sub("GEDI","", ss[1]) ), ss[2]  )
+  
+  bn.out<-sprintf("%s/%s", outdir, bn )
+  
+  if(product.type=="L1B"){
+    dd <- getLevel1BGeo(level1b=infile,select=c("elevation_bin0", "elevation_lastbin"))
+    dd$shot_number<-paste0(dd$shot_number)
+    gedi.geom<-sf::st_as_sf(dd,coords=c("lon_lowestmode", "lat_lowestmode"), crs=4326)
+  }
+  if(product.type=="L2A"){ 
+    dd <- getLevel2AM(level2a =infile)
+    dd$shot_number<-paste0(dd$shot_number)
+    gedi.geom<-sf::st_as_sf(dd,coords=c("longitude_bin0", "latitude_bin0"), crs=4326)
+  }
+  if(product.type=="L2B"){
+     dd<- rGEDI::getLevel2BVPM(level2b = infile)
+     gedi.geom <-  dd[ , c("longitude_bin0", "latitude_bin0", "elev_lowestmode", "elev_highestreturn")]
+     gedi.geom<-sf::st_as_sf(gedi.geom,coords=c("longitude_bin0", "latitude_bin0"), crs=4326)
+  } 
+  
+  if(is.null(saveFormat)) return(NULL)
+  
+  if( tolower(saveFormat)=="shp" || tolower(saveFormat)=="shapefile"){
+    bn.out<-paste0(bn.out, ".shp")
+  }
+  if( tolower(saveFormat)=="gpkg" || tolower(saveFormat)=="geopackage"){
+    bn.out<-paste0(bn.out, ".gpkg")
+  }
+  sf::write_sf(gedi.geom, bn.out, delete_layer=overwrite )    
+  return(bn.out)
 }

@@ -1,0 +1,22 @@
+HTTP/2 200 
+content-type: application/json;charset=utf-8
+date: Sun, 24 Jan 2021 11:34:47 GMT
+set-cookie: AWSALB=9GculEsL6fi8/aAbf3wKsfnH4oi1BuI8gfbjbiL3dHkH6IquOgClaB5/L/M4X0QUnZVoAy2xKjP7cC+kcxexhZsnhqAD9VeNFR3D5sCokCZOBpzMBoWQAT4ANZWA; Expires=Sun, 31 Jan 2021 11:34:46 GMT; Path=/
+set-cookie: AWSALBCORS=9GculEsL6fi8/aAbf3wKsfnH4oi1BuI8gfbjbiL3dHkH6IquOgClaB5/L/M4X0QUnZVoAy2xKjP7cC+kcxexhZsnhqAD9VeNFR3D5sCokCZOBpzMBoWQAT4ANZWA; Expires=Sun, 31 Jan 2021 11:34:46 GMT; Path=/; SameSite=None
+x-frame-options: SAMEORIGIN
+access-control-allow-origin: *
+x-xss-protection: 1; mode=block
+cmr-request-id: db846a11-1ddd-4a60-b77f-0cdee547ff71
+strict-transport-security: max-age=31536000
+cmr-hits: 591
+access-control-expose-headers: CMR-Hits, CMR-Request-Id, X-Request-Id, CMR-Scroll-Id, CMR-Timed-Out, CMR-Shapefile-Original-Point-Count, CMR-Shapefile-Simplified-Point-Count
+x-content-type-options: nosniff
+cmr-took: 525
+x-request-id: db846a11-1ddd-4a60-b77f-0cdee547ff71
+vary: Accept-Encoding, User-Agent
+server: Jetty(9.4.z-SNAPSHOT)
+x-cache: Miss from cloudfront
+via: 1.1 666ff4ad81b3b60af3d2241160893ee3.cloudfront.net (CloudFront)
+x-amz-cf-pop: ZRH50-C1
+x-amz-cf-id: z3OQgBCf6dGiwf4580U6DlMvgEsSHRZxGO0Jzd-Mhq5LTIJlEtnHKQ==
+
