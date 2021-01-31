@@ -13,9 +13,9 @@ ui <- fluidPage(
     actionButton("process", "Process Granules")
   ), 
   
-  fluidRow(
-    column(6 ,  leafletOutput("mymap") ),
-    column(6 ,   plotlyOutput("plot") )
-  )
+ # fluidRow(  
+    h5("Zoom to city level to see the GEDI footprints!"),
+    tmapOutput(  'myMap'   )
+  #)
 
 )

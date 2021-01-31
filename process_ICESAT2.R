@@ -7,9 +7,23 @@ library(jsonlite)
 library(XML)
 library(rlas)
 library(httr)
+library(doParallel)  
+library(foreach)
+library(bigstatsr)
+library(bench)
+library(lwgeom)
+library(mapview)
+library(bigmemory) 
+library(stars)
+
+
+
 
 if(!exists("italy.nord.bounds")) load("italy.nord.bounds.rda")
 data.to.write<-c(
+  "signal_photons/delta_time",
+  "land_segments/longitude",
+  "land_segments/latitude",
   "land_segments/canopy/h_canopy",
   "land_segments/canopy/canopy_rh_conf",
   "land_segments/canopy/h_median_canopy_abs",
@@ -67,7 +81,6 @@ getToken <- function() {
   resj$id
 }
 
-
 create.url <- function(bb, sname = "ATL08", outfile) {
   parameters <- list(
     short_name = sname,
@@ -115,35 +128,46 @@ for (i in dirs) {
 }
 
 
-granule.paths <- list.files(download.data.path, pattern = "*.h5", full.names = T)
+#granule.paths <- list.files(download.data.path, pattern = "*.h5", full.names = T)
+
+ 
+oo<-find.granules(type = "ATL08", italy.nord.bounds)
+granule.paths <- c()
+existing.paths<-c()
+for (i in oo$feed$entry) {
+  url.address <- i$links[[1]]$href
+  outfile<-file.path(download.data.path, basename(url.address))
+  if (is.element(basename(url.address), granule.names)) {
+    existing.paths<-c(existing.paths, outfile)
+    next
+  }
+  print(basename(url.address))
+  r <- GET(url.address, authenticate("tesaf", "Libero17"))
+  bin <- content(r, "raw")
+  writeBin(bin, outfile)
+  granule.paths<-c(granule.paths, outfile)
+}
+
+message( length(existing.paths), " files already processed...")
+message( length(granule.paths), " files to be processed...")
+#granule.paths<-existing.paths
+
+ #list.files(download.data.path, pattern = "*.h5", full.names = T)
 granule.names <-basename(granule.paths)
 
-grep(beams[[1]], pp$name, value = T)
-
-# oo<-find.granules(type = "ATL08", italy.nord.bounds)
-# 
-# for (i in oo$feed$entry) {
-#   url.address <- i$links[[1]]$href
-#   if (is.element(basename(url.address), granule.names)) {
-#     message(basename(url.address), " exists")
-#     next
-#   }
-#   print(basename(url.address))
-#   r <- GET(url.address, authenticate("tesaf", "Libero17"))
-#   bin <- content(r, "raw")
-#   writeBin(bin, file.path(download.data.path, basename(url.address)))
-# }
 
 earth <- c("land", "ocean", "sea ice", "land ice", "inland water")
-out.crs <- sf::st_crs(7912)
+out.crs <- sf::st_crs(4326)
 beams<-c("gt1r","gt2r","gt1l","gt3l","gt2l","gt3r")
 hit <- F
 lines <- list()
-#granule<-granule.paths[[1]]
-whereRthePH <- lapply(granule.paths, function(granule) {
+tables<-list()
+
+
+#granule<-"dl_data/ICESAT/ATL08_20181014141925_02440102_003_01.h5"
+getGranule<-function(granule) {
   
-  op<-hdf5r::H5File$new(granule)
-  
+  op<-hdf5r::H5File$new(granule) 
   pp <- op$ls(recursive=TRUE)
   if(nrow(pp)==0){
     warning("HDF file seems empty... is the file corrupt?")
@@ -156,27 +180,53 @@ whereRthePH <- lapply(granule.paths, function(granule) {
       beams.data[[i]][[basename(i1)]] <- op$open(sprintf("%s/%s", i, i1) )$read() 
       beams.data[[i]][[basename(i1)]][ beams.data[[i]][[basename(i1)]] > 3.3e+38 ] <-NA
     }
+    timetag<-as.POSIXct(beams.data[[i]]$delta_time, origin = "2018-01-01")
+    beams.data[[i]]$delta_time<-NULL
+    
+    every <-   ( length(timetag) / length(beams.data[[i]]$longitude) )
+    ww<-seq(1, length(timetag), every)
+    beams.data[[i]]$time<-timetag[ww]
     nn<-beams.data[[i]][["canopy_h_metrics"]]
     nn<-as.list(as.data.frame(t(nn)))
     names(nn)<- sprintf("canopyH_%sp", c(25,50,60,70,75,80,85,90,95 ))
     beams.data[[i]][["canopy_h_metrics"]]<-NULL 
     beams.data[[i]] <- c(beams.data[[i]], nn)
   }
-  
+  op$close()
   f.table<-data.table::rbindlist(beams.data, idcol = "beam")
-   
-    
-})
+  fname.gr<-basename(granule)
+  raster::extension(fname.gr)<-""
+  
+  geo1<- st_as_sf(f.table,  coords=c("longitude", "latitude"), crs=out.crs )
+ 
 
-fff <- strsplit(names(lines), "_")
+  geo<- st_intersection(geo1,  st_as_sfc(italy.nord.bounds))
+  if(nrow(geo) > 0) st_write(geo, file.path(dirs$download.data.path.geodata, paste0(fname.gr,".gpkg")), append = F)
+  geo 
+}
 
-aaa <- do.call(rbind, fff)
+no_cores <- detectCores() - 2
+registerDoParallel(cores=no_cores)
 
-dff <- data.frame(id = names(lines), aaa)
+cl <- makeCluster(no_cores, type="FORK")
 
-rownames(dff) <- names(lines)
 
-flights_lines <- SpatialLinesDataFrame(SpatialLines(lines), dff)
-crs(flights_lines) <- out.crs
+  tmp <- foreach(i = granule.paths,
+                 .packages = c("sf", "data.table", "hdf5r"))  %dopar%  {
+                    getGranule(i)
+                 }
 
-raster::shapefile(flights_lines, "flighLines", overwrite = T)
+  stopCluster(cl)
+
+save(tmp, file="totalTable.rda")
+
+tmp2<-tmp[!sapply(tmp,is.null)]
+# whereRthePH <- lapply(granule.paths[1:5], getGranule)
+geo <- do.call(rbind, tmp2)
+
+rr<-raster::raster( raster::extent(st_bbox(geo)), resolution=0.001 )
+mm<-st_as_stars(rr, values = NA_integer_)
+r2 = st_rasterize(geo, mm, options = c("MERGE_ALG=ADD", "ALL_TOUCHED=TRUE") )
+
+
+st_write(geo, file.path(dirs$download.data.path.geodata, "ATL08_merged.gpkg"), append = F)

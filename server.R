@@ -1,125 +1,101 @@
 server <- function(input, output, session) {
   mydata<-NULL
-  myBounds<-NULL
-  output$plot <- renderPlotly({
-    req(mydata)
-    dt<-data.frame(  x= 1:(  (input$bar_max[[2]] - input$bar_max[[1]])*100), 
-               ph=mydata$heights$h_ph[  (1+input$bar_max[[1]]*100) : (input$bar_max[[2]]*100)   ] )
-    p <- ggplot(data = dt, aes(x = x, y = ph)) +
-      geom_point(alpha = input$opacity/100)
-    p <- ggplotly(p) %>% toWebGL()
-  })
+  myBounds<-NULL 
+  limits <- 1000
+  # output$plot <- renderPlotly({
+  #   req(mydata)
+  #   dt<-data.frame(  x= 1:(  (input$bar_max[[2]] - input$bar_max[[1]])*100), 
+  #              ph=mydata$heights$h_ph[  (1+input$bar_max[[1]]*100) : (input$bar_max[[2]]*100)   ] )
+  #   p <- ggplot(data = dt, aes(x = x, y = ph)) +
+  #     geom_point(alpha = input$opacity/100)
+  #   p <- ggplotly(p) %>% toWebGL()
+  # })
   
-  points <- eventReactive(input$recalc, {
-    cbind(rnorm(40) * 2 + 13, rnorm(40) + 48)
-  }, ignoreNULL = FALSE)
+
   
-  
-  output$mymap <- renderLeaflet({
-    leaflet()  %>% 
-      addTiles(group = "OSM (default)") %>%
-      addProviderTiles(providers$Stamen.Toner, group = "Toner") %>%
-      addProviderTiles(providers$Stamen.TonerLite, group = "Toner Lite") %>%
-      addMiniMap()%>%
-      # Layers control
-      addLayersControl(
-        baseGroups = c("OSM (default)", "Toner", "Toner Lite"),
-        overlayGroups = c("Outline"),
-        options = layersControlOptions(collapsed =T)
-      )
-  })
-  
-  
+  output$myMap <- renderTmap({ ttt  })
   
   
   
   ###### CHANGED BOUNDS--------
-  observeEvent(input$mymap_bounds, {
-    print(input$mymap_bounds)
-
+  observeEvent(input$myMap_shape_click, {
+    
+    req(input$myMap_shape_click)
+    print(input$myMap_shape_click)
+    
+    df<-sf::read_sf( "GEDI000_clip_6_6278_15_1011_43_7549_47_0821_COLLECTION.gpkg",
+                 query = sprintf("select   * from \"SELECT\" WHERE fid=%d;", as.integer(substr(input$myMap_shape_click, 2, 9999999) ) ), 
+                 layer="SELECT", as_tibble = F ) 
+    df$geom<-NULL
+    dfd<-data.frame(val=unlist(df[cnames]) )
+    sss<-ggplot() + geom_area( aes(y=diff(dfd$val), x=1:(nrow(dfd)-1) ) ) +
+      coord_flip() + theme_bw()
+    cnames<-grep(names(df),pattern = "rh\\d", value=F)
+    shinyalert::shinyalert(sss)
   })
   
-  observeEvent(input$process, {
-    req(input$mymap_bounds)
-    aa<-input$mymap_bounds
-    bb<-unlist(input$mymap_bounds)
+  
+  ###### CHANGED BOUNDS--------
+  observeEvent(input$myMap_zoom, {
+    # bb<<-(input$myMap_bounds)
+    # zz<<-(input$myMap_zoom)
+    lev<-(input$myMap_zoom+5)
+    if(lev < 10) { 
+      lev<-10 
+      print("ret")
+      return(NULL)
+    }
+    
+    bbox<-st_bbox( st_as_sf( as.data.frame( t(matrix(input$myMap_bounds, ncol=2)) ), coords = c("V2", "V1"), crs=4326) )
+    wkt = st_as_text(st_as_sfc( bbox ) ) 
+    #wkt<-"POLYGON ((10.82349 45.58309, 10.83318 45.58309, 10.83318 45.5861, 10.82349 45.5861, 10.82349 45.58309))"
+    if(lev > 19) {  
+      # qq<-sprintf("select fid as ffid, * from \"SELECT\" WHERE  ST_Within(geom, GeomFromText( \"%s\") ) limit %d;", 
+      #             wkt, limits )
+      # qq3<<-qq
+      currlayer2<-tryCatch({
+         sf::read_sf( "GEDI000_clip_6_6278_15_1011_43_7549_47_0821_COLLECTION.gpkg",
+                     wkt_filter = wkt, fid_column_name ="fid",  # as_tibble = FALSE,
+                     layer="SELECT" ) 
+        },
+        error=function(X){
+          X
+        })
       
-    ext<-raster::extent( bb[ c(4,2,3,1) ] )
-    
-    
-    ul_lat<-ymin(ext)
-    ul_lon<-xmin(ext)    
-    lr_lat<-ymax(ext)
-    lr_lon<-xmax(ext)
-    
-    ymin<-ul_lat<-46.283
-    xmin<-ul_lon<-11.3507   
-    ymax<-lr_lat<-46.2375
-    xmax<-lr_lon<-11.4141
-    
-    if( abs(ul_lat-lr_lat)>maxlatlon ||  abs(ul_lon-lr_lon)>maxlatlon ){
-      shinyalert(
-        html = TRUE,
-        text = tagList( 
-          sprintf("Size of window (%.3f° %.3f°) degrees is too large, should be %.3f°
-                  please zoom closer", abs(ul_lat-lr_lat),
-                  abs(ul_lon-lr_lon), maxlatlon )
-        )
-      )
-      return(NULL)
+      currlayer2$delta_time <- format( as.POSIXct(currlayer2$delta_time, origin="2018-01-01T00:00:00Z"),"%Y-%m-%d %H:%M:%OS4" )
+      
+      tmapProxy("myMap", session, { 
+        tm_remove_layer(402) +
+          tm_shape(currlayer2,  name="GEDI" ) +
+          tm_symbols( col = "red", alpha = 0.5, id = "fid",  interactive = T, zindex = 402, size= (lev-19)/3 )
+      })
+      
     }
+    #else {
+       
+      # currlayer2<-tryCatch({
+      #   sf::read_sf( "GEDI000_clip_6_6278_15_1011_43_7549_47_0821_COLLECTION.gpkg",
+      #                wkt_filter = wkt, # query = qq,
+      #                layer=sprintf("level%d",lev)  )  },
+      #   error=function(X){
+      #     X
+      #   })
+      # 
+      # print(nrow(currlayer2))
+      # 
+      # tmapProxy("myMap", session, { 
+      #   tm_remove_layer(402) +
+      #     tm_shape(currlayer2,  name="GEDI_aggregati" ) +
+      #     tm_symbols( col = "number",alpha = 0.5, interactive = F, zindex = 402, size=0.5 )
+      # })
+      
+   # }
     
-    outdir<-"dl_data"
-    gedilevel2b<-readLevel2B(level2Bpath = paste0(outdir,"/GEDI02_B_2019149155511_O02606_T01466_02_001_01.h5"))
-     
-    # level1b_clip_bb <- clipLevel1B(gedilevel1b, xmin, xmax, ymin, ymax,output=paste0(outdir,"//level1b_clip_bb.h5"))
-    # level2a_clip_bb <- clipLevel2A(gedilevel2a, xmin, xmax, ymin, ymax, output=paste0(outdir,"//level2a_clip_bb.h5"))
-    level2b_clip_bb <- clipLevel2B(gedilevel2b, xmin, xmax, ymin, ymax,output=paste0(outdir,"//level2b_clip_bb.h5"))
-    # 
-    # gedilevel2b<- rGEDI::readLevel2B(i)
-    # level2BVPM<-rGEDI::getLevel2BVPM(gedilevel2b)
-    # head(level2BVPM[,c("beam","shot_number","pai","fhd_normal","omega","pgap_theta","cover")])
-    
-     
-  })
-  
-  
-  observeEvent(input$download , {
-    req(input$product)
-    req(input$mymap_bounds)
-    aa<-input$mymap_bounds
-    bb<-unlist(input$mymap_bounds)
-    
-    ext<-raster::extent( bb[ c(4,2,3,1) ] )
-    
-    
-    ul_lat<-ymin(ext)
-    ul_lon<-xmin(ext)    
-    lr_lat<-ymax(ext)
-    lr_lon<-xmax(ext)
-    
-    if( abs(ul_lat-lr_lat)>maxlatlon ||  abs(ul_lon-lr_lon)>maxlatlon ){
-      shinyalert(
-        html = TRUE,
-        text = tagList( 
-          sprintf("Size of window (%.3f° %.3f°) degrees is too large, should be %.3f°
-                  please zoom closer", abs(ul_lat-lr_lat),
-                  abs(ul_lon-lr_lon), maxlatlon )
-        )
-      )
-      return(NULL)
-    }
-    
-    gLevel<-NULL
-    if(input$product=="1B") gLevel<-gedifinder(product="GEDI01_B",ul_lat, ul_lon, lr_lat, lr_lon,version="001",
-                                               daterange=input$daterange)
-    if(input$product=="2A") gLevel<-gedifinder(product="GEDI02_A",ul_lat, ul_lon, lr_lat, lr_lon,version="001",
-                                               daterange=input$daterange)
-    if(input$product=="2B") gLevel<-gedifinder(product="GEDI02_B",ul_lat, ul_lon, lr_lat, lr_lon,version="001",
-                                               daterange=input$daterange)
- 
-    
+
+
     
   })
+    
+  
   
 }
