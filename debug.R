@@ -47,32 +47,33 @@ load("gLevels.rda")
 if(file.exists("dl.dictionary.rds")) dl.dictionary<-readRDS("dl.dictionary.rds") else dl.dictionary<-list()
 
 outdir<-"dl_data/GEDI"
-notClippedFiles<- list.files(path=outdir, pattern = ".*_01\\.h5$", include.dirs = F )
-## clipping the unclipped
-for(i in notClippedFiles){
-  fp<- file.path(outdir, basename(i)) 
-  cl<-rGEDI.clip( fp,   overwrite = T, italy.nord.bounds )
-  file.remove(fp)
-}
+# notClippedFiles<- list.files(path=outdir, pattern = ".*_01\\.h5$", include.dirs = F )
+# ## clipping the unclipped
+# for(i in notClippedFiles){
+#   fp<- file.path(outdir, basename(i)) 
+#   cl<-rGEDI.clip( fp,   overwrite = T, italy.nord.bounds )
+#   file.remove(fp)
+# }
+# 
+# dl.files<- list.files(path=outdir, pattern = ".*\\.h5$", include.dirs = F, full.names = F)
+# dl.files<-substr(dl.files, 1, 46) 
+# 
+# 
+# tmp.files<- list.files(path=outdir, pattern = ".*\\.curltmp$", include.dirs = F, full.names = T )
+# file.remove(tmp.files)
+
+
+
 
 dl.files<- list.files(path=outdir, pattern = ".*\\.h5$", include.dirs = F, full.names = F)
 dl.files<-substr(dl.files, 1, 46) 
-
-
-tmp.files<- list.files(path=outdir, pattern = ".*\\.curltmp$", include.dirs = F, full.names = T )
-file.remove(tmp.files)
-
-
-
-
-dl.files<- list.files(path=outdir, pattern = ".*\\.h5$", include.dirs = F, full.names = F)
-dl.files<-substr(dl.files, 1, 46) 
-todownload<-which( !(tools::file_path_sans_ext(basename(gLevel2A))%in%dl.files))
+todownload<-which( (tools::file_path_sans_ext(basename(gLevel2A))%in%dl.files)) 
 length(unique(gLevel2A)) 
 length(unique(dl.files))
 length(todownload)
 
-# id<-mcparallel({ gediDownload(filepath=gLevel2A[toprocess][1:5],outdir=outdir) })
+
+ id<-mcparallel({ gediDownload(filepath=gLevel1B[[1]], outdir=outdir) })
 # mccollect(id, wait = F)
 # tools::pskill(id$pid)
 
@@ -113,7 +114,7 @@ missing.clipped.files.yesgeo<- setdiff( tools::file_path_sans_ext(basename(geo.f
 registerDoParallel(cores=10) 
 cl <- makeCluster(10, type="FORK")
 
-output <- foreach(i = gLevel2A[todownload],
+output <- foreach(i = gLevel1B[todownload],
                   .packages = c("sf", "rGEDI", "tools"))  %dopar%  {
                     
                     fp<- file.path(outdir, basename(i))
@@ -154,10 +155,11 @@ outtable<-data.frame(totn_lowqual=rep(NA, length(gpkg.files)),
                      avgquality_lowqual=rep(NA, length(gpkg.files)),
                      totn_highqual=rep(NA, length(gpkg.files)), 
                      avgquality_higqual=rep(NA, length(gpkg.files)) )
+
 for(i in gpkg.files) {
   print(i)
   a<-a+1
-  
+  ptm <- proc.time()
   of<-gdalUtils::ogrinfo(  gpkg.files[[a]],  ro = T,
                       sql = sprintf("SELECT count(*) as cc, avg(quality_flag) as avg from \"%s\"  group by  quality_flag > 0.5", 
                                     tools::file_path_sans_ext( basename(gpkg.files[[a]]) ) ) )
@@ -177,7 +179,7 @@ for(i in gpkg.files) {
                         sql = sprintf("SELECT * from \"%s\"  WHERE quality_flag > 0.5", 
                                       tools::file_path_sans_ext( basename(i) ) ), 
                         overwrite = T, 
-                        dst_datasource_name = "GEDI000_clip_6_6278_15_1011_43_7549_47_0821_COLLECTION.gpkg" )
+                        dst_datasource_name = "GEDI000_clip_6_6278_15_1011_43_7549_47_0821_COLLECTION2.gpkg" )
     next
     
   }
@@ -185,33 +187,41 @@ for(i in gpkg.files) {
   gdalUtils::ogr2ogr( src_datasource_name = i, 
                       sql = sprintf("SELECT * from \"%s\"  WHERE quality_flag > 0.5", 
                                     tools::file_path_sans_ext( basename(i) ) ), gt =  65536,
-                      dst_datasource_name = "GEDI000_clip_6_6278_15_1011_43_7549_47_0821_COLLECTION.gpkg", append = T )
+                      dst_datasource_name = "GEDI000_clip_6_6278_15_1011_43_7549_47_0821_COLLECTION2.gpkg", append = T )
+  
+  message(sum( as.numeric( unlist(inf)), na.rm = T ) , " punti in ",  round((proc.time() - ptm)[[3]], 1), " sec" ) 
+  
 }
 
 outtable$perlowquality<- as.integer(outtable$totn_lowqual)/(as.integer(outtable$totn_lowqual)+as.integer(outtable$totn_highqual))*100
 hist(outtable$perlowquality, breaks=34, xlab="qualità < 0.5 (%)", ylab="Frequenza", freq=F, main="" )
+alln<-sum(as.numeric(outtable$totn_highqual), as.numeric(outtable$totn_lowqual), na.rm = T)
+plot(as.numeric(outtable$totn_highqual), as.numeric(outtable$totn_lowqual), 
+     xlab="qualità < 0.5 (%)", ylab="Frequenza", main="" )
 
-plot(outtable$avgquality_lowqual, outtable$avgquality_higqual, xlab="qualità < 0.5 (%)", ylab="Frequenza", main="" )
-pts<-sf::read_sf( "GEDI000_clip_6_6278_15_1011_43_7549_47_0821_COLLECTION.gpkg",
-               query = "SELECt geom from \"SELECT\"",
+pts.single<-sf::read_sf( "GEDI000_clip_6_6278_15_1011_43_7549_47_0821_COLLECTION2.gpkg",
+               query = "SELECt * from \"SELECT\" limit 2",
              layer="SELECT"  )  
 
+dts<-sf::read_sf( "GEDI000_clip_6_6278_15_1011_43_7549_47_0821_COLLECTION2.gpkg",
+                  query = "SELECt count(1), min() from \"SELECT\" group by ",
+                  layer="SELECT"  ) 
 ## Create kernel density output
 kde <- bkde2D( st_coordinates(pts),
-              bandwidth=c(.0045, .0068), gridsize = c(2000,1000))
+              bandwidth=c(.0023, .0034), gridsize = c(5000,2500))
 # Create Raster from Kernel Density output
 KernelDensityRaster <- raster(list(x=kde$x1 ,y=kde$x2 ,z = kde$fhat))
 
 #create pal function for coloring the raster
 KernelDensityRaster[ KernelDensityRaster[]==0 ]<-NA
 palRaster <- leaflet::colorNumeric("Spectral", domain = KernelDensityRaster@data@values)
-raster::writeRaster(KernelDensityRaster, "GEDI000_clip_6_6278_15_1011_43_7549_47_0821_COLLECTION.tif",  overwrite=T )
+raster::writeRaster(KernelDensityRaster, "GEDI000_clip_6_6278_15_1011_43_7549_47_0821_COLLECTION2.tif",  overwrite=T )
 
 # gdalUtils::gdal_rasterize(src_datasource = "GEDI000_clip_6_6278_15_1011_43_7549_47_0821_COLLECTION.gpkg", 
 #                           dst_filename = "GEDI000_clip_6_6278_15_1011_43_7549_47_0821_COLLECTION.tif",  l = "SELECT",
 #                             burn = 1, add = T, a_nodata = 0, tr = c(0.01,0.01))
 
-gdalUtils::gdaladdo("GEDI000_clip_6_6278_15_1011_43_7549_47_0821_COLLECTION.tif", levels=c(2,4,8,16,32), ro=T, r="cubic")
+gdalUtils::gdaladdo("GEDI000_clip_6_6278_15_1011_43_7549_47_0821_COLLECTION3.tif", levels=c(2,4,8,16,32), ro=T, r="cubic")
 ## rasterize
 rr<-raster("GEDI000_clip_6_6278_15_1011_43_7549_47_0821_COLLECTION.tif")
 vv<-hist(rr,  maxpixels=1000000, plot=F )

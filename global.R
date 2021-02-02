@@ -6,7 +6,7 @@ library(leaflet)
 library(leaflet.opacity)
 library(leaflet.extras)
 library("rnaturalearth")
-library("rnaturalearthdata")
+library(raster)
 library(ggplot2)
 library(shinyalert)
 library(tmap)
@@ -20,12 +20,14 @@ names(GEDI.products.rbuttons)<-GEDI.products
 load("italy.nord.bounds.rda")  
 tmap_mode("view")
 #tm_view(leaflet.options = leafletOptions(preferCanvas = T) )
-hm<-raster("GEDI000_clip_6_6278_15_1011_43_7549_47_0821_COLLECTION.tif")
+hm<-raster("GEDI000_clip_6_6278_15_1011_43_7549_47_0821_COLLECTION2.tif")
 #hm[hm[]==0]<-NA
 
 ttt<-  tm_shape(hm) +
-  tm_raster( title="GEDI Point Density", interpolate=T,  n=50, palette = "-RdYlGn", legend.hist=T, legend.show = F, alpha = 0.6) +
-  tm_minimap()
+  tm_raster( title="GEDI Point Density", #interpolate=T, #contrast=c(0.1, 0.9),
+             n=50, palette = "-Spectral",   legend.show = F ) +
+  tm_minimap() + tm_mouse_coordinates(  )
+ 
 
 #of2<- st_coordinates(of)
 #names(of2)<-c("X","y")
