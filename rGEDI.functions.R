@@ -72,10 +72,15 @@ rGEDI.clip<-function( what2clip, overwrite=F, ... ){
   if( is.element("sfc", class( clipper[[1]] )) ){
     clipper<-sf::st_bbox(sf::st_boundary( clipper[[1]]  ))
   }
-  if( is.element("bbox", class( clipper[[1]] )) ){
+  
+  if( is.element("bbox", class( clipper[[1]] )) || length(clipper[[1]])==4 ){
     clipper<-clipper[[1]]
+  }  else {
+    warning("Problem with bound box, should be an SFC element or xmin, xmax, ymin, ymax")
+    return(NULL)
   }
-
+  
+  
   if(length(clipper)==4 ){
     
     xmin<-clipper[["xmin"]]
@@ -83,10 +88,8 @@ rGEDI.clip<-function( what2clip, overwrite=F, ... ){
     ymin<-clipper[["ymin"]]
     ymax<-clipper[["ymax"]]
     
-  } else {
-    warning("Problem with bound box, should be an SFC element or xmin, xmax, ymin, ymax")
-    return(NULL)
-  } 
+  }
+  
   if( !(isTruthy(xmin) & 
         isTruthy(xmax) &
         isTruthy(ymin) &
@@ -220,9 +223,9 @@ rGEDI.toGeom<-function(infile, saveFormat=NULL, overwrite=F, outdir=NA, ...){
   }
   
   if(product.type=="L1B"){
-    dd <- getLevel1BGeo(level1b=infile,select=c("elevation_bin0", "elevation_lastbin"))
+    dd <- getLevel1BGeo(level1b=infile)
     dd$shot_number<-paste0(dd$shot_number)
-    gedi.geom<-sf::st_as_sf(dd,coords=c("lon_lowestmode", "lat_lowestmode"), crs=4326)
+    gedi.geom<-sf::st_as_sf(dd,coords=c("longitude_bin0", "latitude_bin0"), crs=4326)
   }
   if(product.type=="L2A"){ 
     dd <- getLevel2AM(level2a =infile)

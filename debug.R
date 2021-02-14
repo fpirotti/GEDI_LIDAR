@@ -24,7 +24,8 @@ setwd("/archivio/shared/R/GEDI_LIDAR")
 world <- ne_countries(scale = "medium", returnclass = "sf")
 italy <- world[world$name_sort=="Italy",]$geometry
 italy.bounds <- sf::st_bbox(sf::st_boundary( italy  ))
-#save(italy, italy.bounds, file="italy.nord.bounds.rda")
+italy.nord.bounds<-  c(xmin=6.6278, xmax=15.1011, ymin=43.7549, ymax=47.0821)
+save(italy, italy.bounds, italy.nord.bounds, file="italy.nord.bounds.rda")
 
 load("italy.nord.bounds.rda")
 ul_lat<- italy.nord.bounds[["ymax"]]
@@ -67,18 +68,18 @@ outdir<-"dl_data/GEDI"
 
 dl.files<- list.files(path=outdir, pattern = ".*\\.h5$", include.dirs = F, full.names = F)
 dl.files<-substr(dl.files, 1, 46) 
-todownload<-which( (tools::file_path_sans_ext(basename(gLevel2A))%in%dl.files)) 
+todownload<-which( !(tools::file_path_sans_ext(basename(gLevel1B))%in%dl.files)) 
 length(unique(gLevel2A)) 
 length(unique(dl.files))
 length(todownload)
 
 
- id<-mcparallel({ gediDownload(filepath=gLevel1B[[1]], outdir=outdir) })
+#  id<-mcparallel({ gediDownload(filepath=gLevel1B[[1]], outdir=outdir) })
 # mccollect(id, wait = F)
 # tools::pskill(id$pid)
 
 
-basenames.files.to.download<-substr(basename(gLevel2A), 1, 46) 
+basenames.files.to.download<-substr(basename(gLevel1B), 1, 46) 
 
 geo.files<- list.files(path=file.path(outdir,"gpkg"), pattern = "\\.gpkg$",  full.names = T)
 clipped.files<- list.files(path=file.path(outdir), 
@@ -99,7 +100,9 @@ file.remove(downloaded.full.files.to.remove)
 toclip<- downloaded.full.files[ which(  !(substr(basename(downloaded.full.files), 1, 46)%in% substr(basename(clipped.files), 1, 46) ) )] 
 
 
-todownload<- which(!(basenames.files.to.download %in% substr(basename(geo.files),  1, 46)))
+todownload<- which(   !(basenames.files.to.download %in% substr(basename(clipped.files),  1, 46)) &
+                      !(basenames.files.to.download %in% substr(basename(downloaded.full.files.NOT.to.remove),  1, 46)) )
+
 clipped.files.yesGeo.notRemovedFullDownload<- setdiff( tools::file_path_sans_ext(basename(geo.files)), 
                              tools::file_path_sans_ext(basename(clipped.files)) )
 
@@ -114,14 +117,14 @@ missing.clipped.files.yesgeo<- setdiff( tools::file_path_sans_ext(basename(geo.f
 registerDoParallel(cores=10) 
 cl <- makeCluster(10, type="FORK")
 
-output <- foreach(i = gLevel1B[todownload],
+output <- foreach(i = downloaded.full.files.NOT.to.remove,
                   .packages = c("sf", "rGEDI", "tools"))  %dopar%  {
                     
                     fp<- file.path(outdir, basename(i))
-                    gediDownload(filepath=i,outdir=outdir)
-                    cl<-rGEDI.clip( fp, overwrite = F, italy.nord.bounds )
+                    #gediDownload(filepath=i,outdir=outdir)
+                    cl<-rGEDI.clip( fp, overwrite = T, italy.nord.bounds )
                     if(is.character(cl)) file.remove(fp) 
-                    rGEDI.toGeom(cl, saveFormat = "gpkg", overwrite = F, outdir = "gpkg", italy)
+                    #rGEDI.toGeom(cl, saveFormat = "gpkg", overwrite = F,  outdir = "gpkg", italy.nord.bounds)
                     cl
                   } 
 stopCluster(cl)

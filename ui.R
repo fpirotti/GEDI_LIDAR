@@ -1,21 +1,27 @@
 ui <- fluidPage(
-  
+  tags$head(
+    tags$style(HTML(" 
+      .lnlt { 
+            font-size: 12px !important;
+            font-weight:bold;
+            text-align: center;
+      } "))
+  ),
   useShinyalert(),  # Set up shinyalert
+  useShinyjs(),  # Set up shinyalert
   
-  inputPanel(
-    sliderInput("bar_max", label = "Max:",
-                min = 0, max = 1000, value = c(1, 10), step = 0.1),
-    
-    sliderInput("opacity", label = "Contrast",  min = 0, max = 100, value = 1, step = 1),
-    radioButtons("product", NULL, GEDI.products.rbuttons),
-    dateRangeInput("daterange",NULL, start="2019-07-01", end="2021-05-22" ),
-    actionButton("download", "Download Granules"),
-    actionButton("process", "Process Granules")
+  div( img(src="cirgeoheader.PNG" ), 
+
+    fluidRow(
+      column(3, actionButton("download", "Download Granules") ),
+      column(9, h4("Zoom to city level (zoom=14 or more) to see and query the GEDI footprints L2A") )
+    )
+   # actionButton("process", "Process Granules")
   ), 
   
  # fluidRow(  
-    h5("Zoom to city level to see the GEDI footprints!"),
-    tmapOutput(  'myMap'   )
+   addSpinner( leafletOutput(  'myMap'   ),spin = "cube-grid", color = "#330000"), 
+   div(id="logwindow", style="border:1px solid black; height:30px; width:100%;", "LOG")
   #)
 
 )
