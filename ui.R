@@ -10,11 +10,11 @@ ui <- fluidPage(
   useShinyalert(),  # Set up shinyalert
   useShinyjs(),  # Set up shinyalert
   
-  div( img(src="cirgeoheader.PNG" ), 
+  div( div(style="display:none;", icon("warning") ), img(src="cirgeoheader.PNG" , style="height: 80px;" ), 
 
     fluidRow(
-      column(3, actionButton("download", "Download Granules") ),
-      column(9, h4("Zoom to city level (zoom=14 or more) to see and query the GEDI footprints L2A") )
+      column(3, downloadButton("downloadData", "Download Granules") ),
+      column(9, h5("Zoom to city level (zoom=13) or closer to view/download/query GEDI footprints, now you are at zoom=", span( id="sss") ) )
     )
    # actionButton("process", "Process Granules")
   ), 

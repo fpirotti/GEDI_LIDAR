@@ -12,6 +12,8 @@ library(shinyjs)
 library(shinyalert)
 library(leaflet)
 library(leaflet.extras)
+library(mapview)
+
  
 
 GEDI.products<-list("1B"="1B - Geolocated Waveforms", "2A"="2A - RH metrics", "2B"="2B - Canopy Cover Franction")
@@ -38,6 +40,7 @@ ttt<-  leaflet( options=leafletOptions(preferCanvas=T ) ) %>% addTiles(group = "
   setView(lng = 11, lat = 45.0, zoom = 6) %>%
   addMeasure() %>%
   addScaleBar() %>%
+  
   # Layers control
   addLayersControl(
     baseGroups = c("OSM","ESRI","BING Satellite" ),

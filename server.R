@@ -1,14 +1,53 @@
+
+library(htmlwidgets)
 server <- function(input, output, session) {
   mydata<-NULL
   myBounds<-NULL 
   limits <- 1000
  
   
-  output$myMap <- renderLeaflet({ ttt  })
+  output$myMap <- renderLeaflet({ ttt %>% 
+      onRender(
+        "function(el,x){
+                    this.on('mousemove', function(e) {
+                        var lat = e.latlng.lat;
+                        var lng = e.latlng.lng;
+                        var coord = [lat, lng];
+                        
+                        $('#logwindow').html('Lat='+  lat.toFixed(5)+
+                           ' - Long='+  lng.toFixed(5)  );
+                    }); 
+                }"
+      )
+    })
   
   
+  ###### DOWNLOAD  --------
+  output$downloadData <- downloadHandler(
+    filename = function() {
+      paste("data-", Sys.Date(), ".gpkg", sep="")
+    },
+    content = function(file) {
+      if(input$myMap_zoom < 13 ){
+        
+        gdalUtils::ogr2ogr(src_datasource_name = "output/GEDI01_B_clip_6_6278_15_1011_43_7549_47_0821_COLLECTION.gpkg",
+                           dst_datasource_name = file, spat = c(0,0,0,0)  )
+      } else {
+        
+        gdalUtils::ogr2ogr(src_datasource_name = "output/GEDI01_B_clip_6_6278_15_1011_43_7549_47_0821_COLLECTION.gpkg",
+                           dst_datasource_name = file, spat = c(input$myMap_bounds$east,
+                                                                input$myMap_bounds$south,
+                                                                input$myMap_bounds$west,
+                                                                input$myMap_bounds$north)  )        
+      }
+      
+
+       
+    }
+  )
   
-  ###### CHANGED BOUNDS--------
+  
+  ###### CLICK  --------
   observeEvent(input$myMap_shape_click, {
     
     req(input$myMap_shape_click)
@@ -19,18 +58,30 @@ server <- function(input, output, session) {
                                  as.integer(substr(input$myMap_shape_click$id, 2, 9999999) ) ), 
                  layer="SELECT", as_tibble = F ) 
     df$geom<-NULL
-    cnames<-grep(names(df),pattern = "rh\\d", value=F)
-    cnames
+    cnames<-grep(names(df),pattern = "^rh\\d", value=F)
+    
+    df$Time <- format( as.POSIXct(df$delta_time, origin="2018-01-01T00:00:00Z"),"%Y-%m-%d %H:%M:%OS4" )
+    # cnames
+    # zElevation <- df$elev_lowestmode
+    # zTop  <- df$elev_highestreturn
+    # 
+    
     dfd<-data.frame(val=unlist(df[cnames]) )
-    dfd.val<-  diff(dfd$val)  
-    sss<-ggplot() + geom_point( aes(y= dfd$val , x= round( (1:(nrow(dfd) ))/100, 2 ) ) ) +
-      xlab("Normalized Cumulative Return Energy")+
-      ylab("Relative Height") +
-      geom_vline(xintercept = c(0.25, 0.5, 0.75) ) +
+    #dfd.val<-  diff(dfd$val)  
+    
+    
+    sss<-ggplot() + geom_point( aes(y= dfd$val , x= 0:100 ) ) +
+      xlab("Percent Energy Returned")+
+      ylab("Relative Height (m)") +
+      ggtitle(sprintf("%s - Shot number: %s", df$beam, df$shot_number)) + 
+      geom_vline(xintercept = c(25, 5, 75) ) +
+       scale_y_continuous(sec.axis = sec_axis(~ . + df$elev_lowestmode,
+                                              name = "Elevation (m a.m.s.l.)")) +
         theme_bw()
     
     shinyalert::shinyalert(         html = TRUE,
                                     text = tagList(
+                                      renderText(sprintf("Data: %s", df$Time) ),
                                       renderPlot ({ sss })
                                     ) )
   })
@@ -76,12 +127,20 @@ server <- function(input, output, session) {
                     fillOpacity = 0.3, layerId = currlayer2$fid   )
       
       shinyjs::runjs("$('.leaflet-control-layers-overlays > label:nth-child(2)').css('color', 'black');");
+      shinyjs::runjs("if($('.leaflet-control-layers-overlays > label:nth-child(2)').children().children().length > 2 ){
+         $('.leaflet-control-layers-overlays > label:nth-child(2)').children().children()[2].remove();
+       }");
       
+      shinyjs::runjs("$('.leaflet-control-layers-overlays > label:nth-child(2)').attr('title', 'Zoom is OK!');");
+      
+      
+      shinyjs::enable("downloadData")
     } else {
-      
+      shinyjs::disable("downloadData")
       shinyjs::runjs("$('.leaflet-control-layers-overlays > label:nth-child(2)').attr('title', 'Zoom to level 14 or more the extract GEDI points and see them on the screen');");
-      shinyjs::runjs("$('.leaflet-control-layers-overlays > label:nth-child(2)').css('color', 'grey');");
-      shinyjs::html("logwindow",paste0("Zoom to level 14 or more to load points: you are now at zoom level ", lev, "."))
+      shinyjs::runjs("$('.leaflet-control-layers-overlays > label:nth-child(2)').css('color', 'red');");
+      shinyjs::runjs("if($('.leaflet-control-layers-overlays > label:nth-child(2)').children().children().length < 3 ) $('.leaflet-control-layers-overlays > label:nth-child(2)').children().append('<i class=\"fa fa-warning\" role=\"presentation\" aria-label=\"warning icon\"></i>')");
+      shinyjs::html("sss", lev)
     }
     
 
