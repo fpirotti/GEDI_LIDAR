@@ -105,7 +105,7 @@ server <- function(input, output, session) {
   })
   
   
-  
+  ## SEARCH -------
   observeEvent(  input$search, {
     req(input$shotNumber, input$search)
     
@@ -117,17 +117,21 @@ server <- function(input, output, session) {
     shotnumber <-  ( trimws(input$shotNumber) )
     query <- sprintf("select * from \"SELECT\" WHERE shot_number='%s';", 
                      shotnumber )
-    print(query)
- 
     
     df<- sf::read_sf( pointSource,
                       query = query ,
                    fid_column_name ="fid",  # as_tibble = FALSE,
                  layer="SELECT" ) 
     
+    if(nrow(df)==0){ 
+      shinyjs::alert("Shot number not found!")
+      return(NULL)
+    }
     coord <- (st_coordinates(df))
     
     leafletProxy("myMap", session) %>% 
+      addCircles(data=df, group="temporary", color = "yellow", radius=10, 
+                 options = pathOptions(interactive = F, clickable = F) ) %>% 
       fitBounds(lng1 =coord[1,1], lat1 = coord[1,2],
                 lng2 = coord[1,1],lat2 = coord[1,2] )
     
@@ -138,7 +142,7 @@ server <- function(input, output, session) {
   
   observeEvent(  input$myMap_zoom, {
     leafletProxy("myMap", session) %>%
-      clearShapes()  
+      clearGroup("GEDI Footprints") 
   }, priority = 100)
   
   ###### CHANGED BOUNDS--------
@@ -176,7 +180,7 @@ server <- function(input, output, session) {
       shinyjs::html("logwindow",paste0(nrow(currlayer2), " point visualized."))
       
       leafletProxy("myMap", data = currlayer2) %>%
-        clearShapes() %>%
+        clearGroup("GEDI Footprints") %>%
         addCircles(radius = lev, group= "GEDI Footprints", weight = 1, color = "#770000",
                     fillOpacity = 0.3, layerId = currlayer2$fid   )
       
