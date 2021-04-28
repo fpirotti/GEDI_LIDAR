@@ -1,10 +1,15 @@
 
 library(htmlwidgets)
+
+
+
 server <- function(input, output, session) {
   mydata<-NULL
   myBounds<-NULL 
   limits <- 1000
  
+
+  
   
   output$myMap <- renderLeaflet({ ttt %>% 
       onRender(
@@ -30,11 +35,11 @@ server <- function(input, output, session) {
     content = function(file) {
       if(input$myMap_zoom < 13 ){
         
-        gdalUtils::ogr2ogr(src_datasource_name = "output/GEDI01_B_clip_6_6278_15_1011_43_7549_47_0821_COLLECTION.gpkg",
+        gdalUtils::ogr2ogr(src_datasource_name = pointSource,
                            dst_datasource_name = file, spat = c(0,0,0,0)  )
       } else {
         
-        gdalUtils::ogr2ogr(src_datasource_name = "output/GEDI01_B_clip_6_6278_15_1011_43_7549_47_0821_COLLECTION.gpkg",
+        gdalUtils::ogr2ogr(src_datasource_name = pointSource,
                            dst_datasource_name = file, spat = c(input$myMap_bounds$east,
                                                                 input$myMap_bounds$south,
                                                                 input$myMap_bounds$west,
@@ -53,9 +58,9 @@ server <- function(input, output, session) {
     req(input$myMap_shape_click)
     print(input$myMap_shape_click)
     
-    df<-sf::read_sf( "output/GEDI01_B_clip_6_6278_15_1011_43_7549_47_0821_COLLECTION.gpkg",
+    df<-sf::read_sf( pointSource,
                  query = sprintf("select   * from \"SELECT\" WHERE fid=%d;", 
-                                 as.integer(substr(input$myMap_shape_click$id, 2, 9999999) ) ), 
+                                 as.integer(input$myMap_shape_click$id) ) , 
                  layer="SELECT", as_tibble = F ) 
     df$geom<-NULL
     cnames<-grep(names(df),pattern = "^rh\\d", value=F)
@@ -69,22 +74,67 @@ server <- function(input, output, session) {
     dfd<-data.frame(val=unlist(df[cnames]) )
     #dfd.val<-  diff(dfd$val)  
     
+    aaaaa<-dfd$val
+    q <- 0:100
+     
     
-    sss<-ggplot() + geom_point( aes(y= dfd$val , x= 0:100 ) ) +
+    # model <- lm(aaaaa ~ poly(q,5))
+    # predicted.intervals <- predict(model,data.frame(x=q),interval='confidence',
+    #                                level=0.99)
+    diffs <- diff( aaaaa )
+    diffs <- -1/c( diffs[[1]], diffs)
+    sss<- ggplot() + geom_point( aes(y= aaaaa , x=q), color=colourvalues::color_values(diffs, palette = "spectral")  ) + 
+    #  geom_line(colour = "red",  aes(y= predicted.intervals[,'fit'] , x=q ) ) +
       xlab("Percent Energy Returned")+
       ylab("Relative Height (m)") +
-      ggtitle(sprintf("%s - Shot number: %s", df$beam, df$shot_number)) + 
-      geom_vline(xintercept = c(25, 5, 75) ) +
-       scale_y_continuous(sec.axis = sec_axis(~ . + df$elev_lowestmode,
+      #ggtitle(sprintf("%s - Shot number: %s", df$beam, df$shot_number)) + 
+      geom_hline(yintercept = c(aaaaa[[25]], aaaaa[[50]], aaaaa[[75]]) ) +
+      geom_vline(xintercept = c( 25 ,   50 ,  75 ), alpha=0.2 ) +
+      scale_y_continuous(sec.axis = sec_axis(~ . + df$elev_lowestmode,
                                               name = "Elevation (m a.m.s.l.)")) +
-        theme_bw()
+      theme_bw()
+    
+     
     
     shinyalert::shinyalert(         html = TRUE,
-                                    text = tagList(
-                                      renderText(sprintf("Data: %s", df$Time) ),
-                                      renderPlot ({ sss })
+                                    text = tagList( 
+                                      renderText(sprintf("Data: %s - %s - Shot number: %s",
+                                                         df$Time, df$beam, df$shot_number ) ),
+                                      renderPlotly ({   sss })
                                     ) )
   })
+  
+  
+  
+  observeEvent(  input$search, {
+    req(input$shotNumber, input$search)
+    
+    if( is.na(as.numeric(input$shotNumber))){
+      shinyjs::alert("Shot number not understood!")
+      return(NULL)
+    }
+    
+    shotnumber <-  ( trimws(input$shotNumber) )
+    query <- sprintf("select * from \"SELECT\" WHERE shot_number='%s';", 
+                     shotnumber )
+    print(query)
+ 
+    
+    df<- sf::read_sf( pointSource,
+                      query = query ,
+                   fid_column_name ="fid",  # as_tibble = FALSE,
+                 layer="SELECT" ) 
+    
+    coord <- (st_coordinates(df))
+    
+    leafletProxy("myMap", session) %>% 
+      fitBounds(lng1 =coord[1,1], lat1 = coord[1,2],
+                lng2 = coord[1,1],lat2 = coord[1,2] )
+    
+    
+    
+  } )
+  
   
   observeEvent(  input$myMap_zoom, {
     leafletProxy("myMap", session) %>%
@@ -100,15 +150,19 @@ server <- function(input, output, session) {
     wkt = st_as_text(st_as_sfc( bbox ) ) 
     #wkt<-"POLYGON ((10.82349 45.58309, 10.83318 45.58309, 10.83318 45.5861, 10.82349 45.5861, 10.82349 45.58309))"
     if(lev > 13) {  
- 
       currlayer2<-tryCatch({
-         sf::read_sf( "output/GEDI01_B_clip_6_6278_15_1011_43_7549_47_0821_COLLECTION.gpkg",
+         sf::read_sf( pointSource,
                      wkt_filter = wkt, fid_column_name ="fid",  # as_tibble = FALSE,
                      layer="SELECT" ) 
         },
         error=function(X){
           X
         })
+      
+      if(is.element("error", class(currlayer2) )) {
+        shinyjs::html("logwindow", paste0("ERRORE! ", currlayer2) )
+        return(NULL)
+      }
       
       currlayer3<<-currlayer2
       if(nrow(currlayer2)==0){

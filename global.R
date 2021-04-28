@@ -13,12 +13,14 @@ library(shinyalert)
 library(leaflet)
 library(leaflet.extras)
 library(mapview)
-
+library(plotly)
  
 
 GEDI.products<-list("1B"="1B - Geolocated Waveforms", "2A"="2A - RH metrics", "2B"="2B - Canopy Cover Franction")
 GEDI.products.rbuttons<-names(GEDI.products)
 names(GEDI.products.rbuttons)<-GEDI.products
+
+pointSource <-"/archivio/shared/geodati/vettoriali/laser/GEDI/GEDI01_B_clip_6_6278_15_1011_43_7549_47_0821_COLLECTION.gpkg"
 
 
 load("italy.nord.bounds.rda")  
@@ -48,6 +50,17 @@ ttt<-  leaflet( options=leafletOptions(preferCanvas=T ) ) %>% addTiles(group = "
     options = layersControlOptions(collapsed = FALSE)
   )
  
+
+# 
+# xv<-seq(0,4,0.01)
+# yv<-dnorm(xv,2,0.5) 
+# yv <- aaaaa
+# plot(yv, ylim=c(-4,24))
+# dY <- 1/diff(yv)   # the derivative of your function
+# dX <- rowMeans(embed(1:length(yv),2)) # centers the X values for plotting
+# points(dX,dY,type="l",col="red") #check
+# 
+
 
 #of2<- st_coordinates(of)
 #names(of2)<-c("X","y")

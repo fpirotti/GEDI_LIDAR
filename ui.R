@@ -14,7 +14,9 @@ ui <- fluidPage(
 
     fluidRow(
       column(3, downloadButton("downloadData", "Download Granules") ),
-      column(9, h5("Zoom to city level (zoom=13) or closer to view/download/query GEDI footprints, now you are at zoom=", span( id="sss") ) )
+      column(3, actionButton("search", "Search shot number") ),
+      column(6, textInput("shotNumber", NULL, placeholder = "27741105700219828") ),
+    #  column(6, h5("Zoom to city level (zoom=13) or closer to view/download/query GEDI footprints, now you are at zoom=", span( id="sss") ) )
     )
    # actionButton("process", "Process Granules")
   ), 
