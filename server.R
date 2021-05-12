@@ -76,14 +76,17 @@ server <- function(input, output, session) {
     
     aaaaa<-dfd$val
     q <- 0:100
-     
-    
+    Energy.Percent <- q 
+    Height <- aaaaa
     # model <- lm(aaaaa ~ poly(q,5))
     # predicted.intervals <- predict(model,data.frame(x=q),interval='confidence',
     #                                level=0.99)
     diffs <- diff( aaaaa )
+    diff2 <- 100 +  c( diffs[[1]], diffs)* -100
     diffs <- -1/c( diffs[[1]], diffs)
-    sss<- ggplot() + geom_point( aes(y= aaaaa , x=q), color=colourvalues::color_values(diffs, palette = "spectral")  ) + 
+    sss<- ggplot() + 
+      geom_point( aes(y= Height , x=Energy.Percent), color=colourvalues::color_values(diffs, palette = "spectral")  ) + 
+      geom_point( aes(y= Height , x=diff2 )  ) + 
     #  geom_line(colour = "red",  aes(y= predicted.intervals[,'fit'] , x=q ) ) +
       xlab("Percent Energy Returned")+
       ylab("Relative Height (m)") +
@@ -97,24 +100,32 @@ server <- function(input, output, session) {
      
     
     shinyalert::shinyalert(         html = TRUE,
+                                    size = "l",
                                     text = tagList( 
-                                      renderText(sprintf("Data: %s - %s - Shot number: %s",
-                                                         df$Time, df$beam, df$shot_number ) ),
-                                      renderPlotly ({   sss })
+                                      fluidRow(
+                                        column(6, style="text-align:left;", HTML(sprintf("Data: %s<br>Beam: %s
+                                                               <br>Shot: %s<br><hr>Alt. low/high: %.2f m /%.2f m
+                                                               <br>Delta Alt.: %.2f m",
+                                                         df$Time, df$beam, df$shot_number, 
+                                                         (df$elev_lowestmode),
+                                                         (df$elev_highestreturn),
+                                                         (df$elev_highestreturn) - (df$elev_lowestmode) ) ) ),
+                                        column(6, renderPlotly ({   sss }) )
+                                      )
                                     ) )
   })
   
   
   ## SEARCH -------
   observeEvent(  input$search, {
-    req(input$shotNumber, input$search)
+    req(  input$search)
     
-    if( is.na(as.numeric(input$shotNumber))){
+    if( is.na(as.numeric(input$search))){
       shinyjs::alert("Shot number not understood!")
       return(NULL)
     }
     
-    shotnumber <-  ( trimws(input$shotNumber) )
+    shotnumber <-  ( trimws(input$search) )
     query <- sprintf("select * from \"SELECT\" WHERE shot_number='%s';", 
                      shotnumber )
     
@@ -124,7 +135,7 @@ server <- function(input, output, session) {
                  layer="SELECT" ) 
     
     if(nrow(df)==0){ 
-      shinyjs::alert("Shot number not found!")
+      shinyjs::alert( sprintf("Shot number '%s' not found!", input$search) )
       return(NULL)
     }
     coord <- (st_coordinates(df))

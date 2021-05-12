@@ -22,7 +22,13 @@ names(GEDI.products.rbuttons)<-GEDI.products
 
 pointSource <-"/archivio/shared/geodati/vettoriali/laser/GEDI/GEDI01_B_clip_6_6278_15_1011_43_7549_47_0821_COLLECTION.gpkg"
 
+query <- sprintf("select count(*) from \"SELECT\";" )
 
+df<- sf::read_sf( pointSource,
+                  query = query ,
+                  fid_column_name ="fid",  # as_tibble = FALSE,
+                  layer="SELECT" ) 
+nPoints <- df$`count(*)`
 load("italy.nord.bounds.rda")  
 #tmap_mode("view")
 #tm_view(leaflet.options = leafletOptions(preferCanvas = T) )
