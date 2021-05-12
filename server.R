@@ -102,7 +102,7 @@ server <- function(input, output, session) {
     shinyalert::shinyalert(         html = TRUE,
                                     size = "l",
                                     text = tagList( 
-                                      fluidRow(
+                                      fluidRow( 
                                         column(6, style="text-align:left;", HTML(sprintf("Data: %s<br>Beam: %s
                                                                <br>Shot: %s<br><hr>Alt. low/high: %.2f m /%.2f m
                                                                <br>Delta Alt.: %.2f m",
