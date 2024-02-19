@@ -1,5 +1,12 @@
-library(rGEDI)
-library(raster)
+ 
+# library(terra)
+library(sf)
+
+if(!require(rGEDI)){
+  devtools::install_git("https://github.com/carlos-alberto-silva/rGEDI", dependencies = TRUE)
+  
+  library(rGEDI)
+}
 
 isTruthy<-function (x) 
 {
@@ -64,7 +71,7 @@ rGEDI.clip<-function( what2clip, overwrite=F, ... ){
   clipper<-list(...)
   
   if(is.null(clipper)) {
-    warning()
+    warning("No clipper polygon or other data")
     return(NULL)
   }
   
@@ -166,14 +173,26 @@ rGEDI.clip<-function( what2clip, overwrite=F, ... ){
   return(bn.out)
    
 }
+ 
 
-
+#' Title
+#'
+#' @param infile either rGEDI hd5 opened file or path to h5 file 
+#'
+#' @return returns date object
+#' @export
+#'
+#' @examples #none
+rGEDI.dateFromFileName<-function(infile){  
+  strptime(substr(basename(infile), 10,22), "%Y%j%H%M%S")
+}
 
 #' Title
 #'
 #' @param infile either rGEDI hd5 opened file or path to h5 file
 #' @param saveFormat either "shapefile"/"SHP" or "geopackage"/"GPKG" 
 #' @param overwrite TRUE or FALSE overwrite if file exists?
+#' @param clipPoly simple feature from sf library that must be a polygon.
 #' @param ...  if a polygon is provided, it will clip to that polygon
 #'
 #' @return returns SF object with geometries, if "saveformat" is not null, 
@@ -181,7 +200,9 @@ rGEDI.clip<-function( what2clip, overwrite=F, ... ){
 #' @export
 #'
 #' @examples #none
-rGEDI.toGeom<-function(infile, saveFormat=NULL, overwrite=F, outdir=NA, ...){
+rGEDI.toGeom<-function(infile, saveFormat="GPKG", 
+                       overwrite=FALSE, outdir=NA, 
+                       clipPoly=NULL, ...){
   
   if(file.exists(infile)){
     infile<-rGEDI.read(infile)
@@ -194,7 +215,8 @@ rGEDI.toGeom<-function(infile, saveFormat=NULL, overwrite=F, outdir=NA, ...){
   
   bn<-basename(infile@h5$filename)
   dir<-dirname(infile@h5$filename) 
-  raster::extension(bn)<-""
+  bn<-tools::file_path_sans_ext(bn)
+  # raster::extension(bn)<-""
   ss<-strsplit(bn,"_")[[1]]
   product.type<- paste0("L", as.integer( sub("GEDI","", ss[1]) ), ss[2]  )
   
@@ -202,8 +224,9 @@ rGEDI.toGeom<-function(infile, saveFormat=NULL, overwrite=F, outdir=NA, ...){
     bn.out<- file.path( dir, bn )
   } else {
     
-    bn.out<- file.path( dir, outdir, bn )
+    bn.out<- file.path( outdir, bn )
     if( !dir.exists(dirname(bn.out)) ){
+      message("Creating directory ", dirname(bn.out) )
       dir.create(dirname(bn.out), showWarnings = F, recursive = T, mode = "0777")
       Sys.chmod(dirname(bn.out), mode = "0777", use_umask = F)
     }
@@ -212,25 +235,35 @@ rGEDI.toGeom<-function(infile, saveFormat=NULL, overwrite=F, outdir=NA, ...){
   if( tolower(saveFormat)=="shp" || tolower(saveFormat)=="shapefile"){
     bn.out<-paste0(bn.out, ".shp")
   }
-  if( tolower(saveFormat)=="gpkg" || tolower(saveFormat)=="geopackage"){
+  else if( tolower(saveFormat)=="gpkg" || tolower(saveFormat)=="geopackage"){
     bn.out<-paste0(bn.out, ".gpkg")
   }
+  else {
+    # warning("You must put a save format either gpkg or shape")
+    if(grepl("gedi\\.level", class(infile))) rGEDI::close(infile)
+    stop("You must put an output format: either gpkg or shape")
+  }  
   
   if(file.exists(bn.out)&& overwrite==F){
-    message("File ", bn.out , " exists")
+    message("File ", bn.out , " exists, returning")
     if(grepl("gedi\\.level", class(infile))) rGEDI::close(infile)
-    return(bn.out)
+    return(sprintf("%s EXISTS", bn.out))
+  }
+  
+  if(!file.exists(bn.out)&& overwrite==F){
+    overwrite=TRUE
   }
   
   if(product.type=="L1B"){
     dd <- getLevel1BGeo(level1b=infile)
-    dd$shot_number<-paste0(dd$shot_number)
-    gedi.geom<-sf::st_as_sf(dd,coords=c("longitude_bin0", "latitude_bin0"), crs=4326)
+    # dd$shot_number<-paste0(dd$shot_number)
+    gedi.geom<-sf::st_as_sf( na.omit(dd, cols=c("longitude_bin0", "latitude_bin0")),coords=c("longitude_bin0", "latitude_bin0"), crs=4326)
   }
   if(product.type=="L2A"){ 
     dd <- getLevel2AM(level2a =infile)
-    dd$shot_number<-paste0(dd$shot_number)
-    gedi.geom<-sf::st_as_sf(dd,coords=c("lon_lowestmode", "lat_lowestmode"), crs=4326)
+    # dd$shot_number<-paste0(dd$shot_number)
+    
+    gedi.geom<-sf::st_as_sf(na.omit(dd, cols=c("lon_lowestmode", "lat_lowestmode")),coords=c("lon_lowestmode", "lat_lowestmode"), crs=4326)
   }
   if(product.type=="L2B"){
      dd<- rGEDI::getLevel2BVPM(level2b = infile)
@@ -238,12 +271,27 @@ rGEDI.toGeom<-function(infile, saveFormat=NULL, overwrite=F, outdir=NA, ...){
      gedi.geom<-sf::st_as_sf(gedi.geom,coords=c("longitude_bin0", "latitude_bin0"), crs=4326)
   } 
   
-  if(is.null(saveFormat)) {
-    warning("You must put a save format either gpkg or shape")
-    if(grepl("gedi\\.level", class(infile))) rGEDI::close(infile)
-    return(NULL)
-  }
+
+  
+  if(!is.null(clipPoly) ){ 
+    if( !is.element("sfc", class(clipPoly )) && !is.element("sf", class(clipPoly )) ){ 
+      # warning("Clip element must be an sf or sfc  element.") 
+      stop("Clip element must be an sf or sfc  element.")
+    } 
+    if( !is.element("sfc_POLYGON", class(clipPoly )) && 
+        !is.element("sfc_POLYGON", class(clipPoly[[1]] )) ){
+      warning("Clip element must be a POLYGON, something wrong, will try to clip anyway but check results")  
  
-  sf::write_sf(gedi.geom, bn.out, delete_layer=overwrite )    
-  return(bn.out)
+    } 
+    sf::sf_use_s2(FALSE)
+    message("Clipping to polygon(s)... might take a while")
+    gedi.geom <- sf::st_intersection(gedi.geom, 
+                                     sf::st_transform(clipPoly, sf::st_crs(gedi.geom) ) )
+ 
+    
+  }
+  sf::write_sf(gedi.geom, bn.out, delete_layer = T )    
+  return(sprintf("DONE %s", bn.out))
 }
+
+
